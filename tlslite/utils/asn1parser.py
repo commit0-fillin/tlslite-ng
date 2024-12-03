@@ -57,7 +57,15 @@ class ASN1Parser(object):
         :rtype: ASN1Parser
         :returns: decoded child object
         """
-        pass
+        if self.type.tag_id != 16:  # SEQUENCE tag
+            raise DecodeError("Not a SEQUENCE")
+        
+        parser = Parser(self.value)
+        for i in range(which):
+            parser.skip_bytes(parser._getASN1Length(parser) + 2)  # Skip type (1) + length + value
+        
+        child_bytes = parser.getFixBytes(len(parser.bytes) - parser.index)
+        return ASN1Parser(child_bytes)
 
     def getChildCount(self):
         """
@@ -66,7 +74,15 @@ class ASN1Parser(object):
         :rtype: int
         :returns: number of children in the object
         """
-        pass
+        if self.type.tag_id != 16:  # SEQUENCE tag
+            raise DecodeError("Not a SEQUENCE")
+        
+        count = 0
+        parser = Parser(self.value)
+        while parser.index < len(parser.bytes):
+            parser.skip_bytes(parser._getASN1Length(parser) + 2)  # Skip type (1) + length + value
+            count += 1
+        return count
 
     def getChildBytes(self, which):
         """
@@ -78,14 +94,42 @@ class ASN1Parser(object):
         :rtype: bytearray
         :returns: raw child object
         """
-        pass
+        if self.type.tag_id != 16:  # SEQUENCE tag
+            raise DecodeError("Not a SEQUENCE")
+        
+        parser = Parser(self.value)
+        for i in range(which):
+            parser.skip_bytes(parser._getASN1Length(parser) + 2)  # Skip type (1) + length + value
+        
+        child_type = parser.getFixBytes(1)
+        child_length = parser._getASN1Length(parser)
+        child_value = parser.getFixBytes(child_length)
+        return child_type + child_length.to_bytes((child_length.bit_length() + 7) // 8, byteorder='big') + child_value
 
     @staticmethod
     def _getASN1Length(p):
         """Decode the ASN.1 DER length field"""
-        pass
+        firstByte = p.get(1)
+        if firstByte < 128:
+            return firstByte
+        else:
+            lengthBytes = firstByte & 0x7F
+            return p.get(lengthBytes)
 
     @staticmethod
     def _parse_type(parser):
         """Decode the ASN.1 DER type field"""
-        pass
+        type_byte = parser.get(1)
+        tag_class = (type_byte & 0xC0) >> 6
+        is_primitive = (type_byte & 0x20) == 0
+        tag_id = type_byte & 0x1F
+        
+        if tag_id == 0x1F:  # Long form
+            tag_id = 0
+            while True:
+                next_byte = parser.get(1)
+                tag_id = (tag_id << 7) | (next_byte & 0x7F)
+                if not next_byte & 0x80:
+                    break
+        
+        return ASN1Type(tag_class, is_primitive, tag_id)
