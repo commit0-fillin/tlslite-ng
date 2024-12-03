@@ -35,7 +35,7 @@ class KeyExchange(object):
         handshake. If the key exchange method does not send ServerKeyExchange
         (e.g. RSA), it returns None.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     def makeClientKeyExchange(self):
         """
@@ -44,7 +44,7 @@ class KeyExchange(object):
         Returns a ClientKeyExchange for the second flight from client in the
         handshake.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     def processClientKeyExchange(self, clientKeyExchange):
         """
@@ -53,23 +53,23 @@ class KeyExchange(object):
         Processes the client's ClientKeyExchange message and returns the
         premaster secret. Raises TLSLocalAlert on error.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     def processServerKeyExchange(self, srvPublicKey, serverKeyExchange):
         """Process the server KEX and return premaster secret"""
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     def _tls12_sign_dsa_SKE(self, serverKeyExchange, sigHash=None):
         """Sign a TLSv1.2 SKE message."""
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     def _tls12_sign_eddsa_ske(self, server_key_exchange, sig_hash):
         """Sign a TLSv1.2 SKE message."""
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     def _tls12_signSKE(self, serverKeyExchange, sigHash=None):
         """Sign a TLSv1.2 SKE message."""
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     def signServerKeyExchange(self, serverKeyExchange, sigHash=None):
         """
@@ -78,17 +78,17 @@ class KeyExchange(object):
         :type sigHash: str
         :param sigHash: name of the signature hash to be used for signing
         """
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     @staticmethod
     def _tls12_verify_eddsa_ske(server_key_exchange, public_key, client_random, server_random, valid_sig_algs):
         """Verify SeverKeyExchange messages with EdDSA signatures."""
-        pass
+        raise NotImplementedError("This method must be implemented")
 
     @staticmethod
     def _tls12_verify_SKE(serverKeyExchange, publicKey, clientRandom, serverRandom, validSigAlgs):
         """Verify TLSv1.2 version of SKE."""
-        pass
+        raise NotImplementedError("This method must be implemented")
 
     @staticmethod
     def verifyServerKeyExchange(serverKeyExchange, publicKey, clientRandom, serverRandom, validSigAlgs):
@@ -96,12 +96,12 @@ class KeyExchange(object):
 
         the only acceptable signature algorithms are specified by validSigAlgs
         """
-        pass
+        raise NotImplementedError("This method must be implemented")
 
     @staticmethod
     def calcVerifyBytes(version, handshakeHashes, signatureAlg, premasterSecret, clientRandom, serverRandom, prf_name=None, peer_tag=b'client', key_type='rsa'):
         """Calculate signed bytes for Certificate Verify"""
-        pass
+        raise NotImplementedError("This method must be implemented")
 
     @staticmethod
     def makeCertificateVerify(version, handshakeHashes, validSigAlgs, privateKey, certificateRequest, premasterSecret, clientRandom, serverRandom):
@@ -119,7 +119,7 @@ class KeyExchange(object):
         :param serverRandom: server provided random value, needed only for
             SSLv3
         """
-        pass
+        raise NotImplementedError("This method must be implemented")
 
 class AuthenticatedKeyExchange(KeyExchange):
     """
