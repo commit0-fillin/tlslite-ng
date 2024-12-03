@@ -14,7 +14,7 @@ PY_VER = sys.version_info
 
 def new(key, iv):
     """Operate this 3DES cipher."""
-    pass
+    return Python_TripleDES(key, iv)
 
 class _baseDes(object):
     """The base class shared by DES and triple DES."""
@@ -28,7 +28,9 @@ class _baseDes(object):
         Only accept byte strings or ascii unicode values.
         Otherwise there is no way to correctly decode the data into bytes.
         """
-        pass
+        if isinstance(data, str):
+            return data.encode('ascii')
+        return data
 
 class Des(_baseDes):
     """DES encryption/decryption class.
@@ -59,34 +61,178 @@ class Des(_baseDes):
 
     def set_key(self, key):
         """Set the crypting key for this object. Must be 8 bytes."""
-        pass
+        if len(key) != 8:
+            raise ValueError("Key must be 8 bytes long")
+        key = self._guard_against_unicode(key)
+        self.key = key
+        self.__create_sub_keys()
 
     def __string_to_bitlist(self, data):
         """Turn the string data into a list of bits (1, 0)'s."""
-        pass
+        if isinstance(data, str):
+            data = data.encode('ascii')
+        l = len(data) * 8
+        result = [0] * l
+        pos = 0
+        for ch in data:
+            i = 7
+            while i >= 0:
+                if ch & (1 << i) != 0:
+                    result[pos] = 1
+                else:
+                    result[pos] = 0
+                pos += 1
+                i -= 1
+        return result
 
     def __bitlist_to_string(self, data):
         """Turn the data as list of bits into a string."""
-        pass
+        result = []
+        pos = 0
+        c = 0
+        while pos < len(data):
+            c += data[pos] << (7 - (pos % 8))
+            if (pos % 8) == 7:
+                result.append(c)
+                c = 0
+            pos += 1
+        return bytes(result)
 
     def __permutate(self, table, block):
         """Permutate this block with the specified table."""
-        pass
+        return [block[x] for x in table]
 
     def __create_sub_keys(self):
         """Transform the secret key for data processing.
 
         Create the 16 subkeys k[1] to k[16] from the given key.
         """
-        pass
+        key = self.__permutate(self.__pc1, self.__string_to_bitlist(self.key))
+        i = 0
+        # Split into Left and Right sections
+        self._l = key[:28]
+        self._r = key[28:]
+        while i < 16:
+            j = 0
+            # Perform circular left shifts
+            while j < self.__left_rotations[i]:
+                self._l.append(self._l[0])
+                del self._l[0]
+                self._r.append(self._r[0])
+                del self._r[0]
+                j += 1
+            # Create one of the 16 subkeys through pc2 permutation
+            self._kn[i] = self.__permutate(self.__pc2, self._l + self._r)
+            i += 1
 
     def __des_crypt(self, block, crypt_type):
         """Crypt the block of data through DES bit-manipulation."""
-        pass
+        block = self.__permutate(self.__ip, block)
+        self._l = block[:32]
+        self._r = block[32:]
+
+        # Encryption starts from Kn[1] through to Kn[16]
+        if crypt_type == self.ENCRYPT:
+            iteration = 0
+            iteration_adjustment = 1
+        # Decryption starts from Kn[16] down to Kn[1]
+        else:
+            iteration = 15
+            iteration_adjustment = -1
+
+        i = 0
+        while i < 16:
+            # Make a copy of R[i-1], this will later become L[i]
+            tempR = self._r[:]
+
+            # Permutate R[i - 1] to start creating R[i]
+            self._r = self.__permutate(self.__expansion_table, self._r)
+
+            # Exclusive or R[i - 1] with K[i], create B[1] to B[8] whilst here
+            self._r = list(map(lambda x, y: x ^ y, self._r, self._kn[iteration]))
+            B = [self._r[:6], self._r[6:12], self._r[12:18], self._r[18:24],
+                 self._r[24:30], self._r[30:36], self._r[36:42], self._r[42:]]
+
+            # Permutate B[1] to B[8] using the S-Boxes
+            j = 0
+            Bn = [0] * 32
+            pos = 0
+            while j < 8:
+                # Work out the offsets
+                m = (B[j][0] << 1) + B[j][5]
+                n = (B[j][1] << 3) + (B[j][2] << 2) + (B[j][3] << 1) + B[j][4]
+
+                # Find the permutation value
+                v = self.__sbox[j][(m << 4) + n]
+
+                # Turn value into bits, add it to result: Bn
+                Bn[pos] = (v & 8) >> 3
+                Bn[pos + 1] = (v & 4) >> 2
+                Bn[pos + 2] = (v & 2) >> 1
+                Bn[pos + 3] = v & 1
+
+                pos += 4
+                j += 1
+
+            # Permutate the concatination of B[1] to B[8] (Bn)
+            self._r = self.__permutate(self.__p, Bn)
+
+            # Xor with L[i - 1]
+            self._r = list(map(lambda x, y: x ^ y, self._r, self._l))
+
+            # L[i] becomes R[i - 1]
+            self._l = tempR
+
+            i += 1
+            iteration += iteration_adjustment
+
+        # Final permutation of R[16]L[16]
+        self._final = self.__permutate(self.__fp, self._r + self._l)
+        return self._final
 
     def crypt(self, data, crypt_type):
         """Crypt the data in blocks, running it through des_crypt()."""
-        pass
+        if not data:
+            return ''
+        if len(data) % self.block_size != 0:
+            if crypt_type == self.DECRYPT:
+                raise ValueError("Invalid data length, data must be a multiple of " + str(self.block_size) + " bytes\n.")
+            if not self.getPadding():
+                raise ValueError("Invalid data length, data must be a multiple of " + str(self.block_size) + " bytes\n.")
+            else:
+                data += (self.block_size - (len(data) % self.block_size)) * self.getPadding()
+
+        if self.getMode() == CBC:
+            if self.getIV():
+                iv = self.__string_to_bitlist(self.getIV())
+            else:
+                raise ValueError("For CBC mode, you must supply an IV")
+
+        # Split the data into blocks, crypting each one separately
+        i = 0
+        result = []
+        while i < len(data):
+            block = self.__string_to_bitlist(data[i:i+8])
+
+            # Xor with IV if using CBC mode
+            if self.getMode() == CBC:
+                if crypt_type == self.ENCRYPT:
+                    block = list(map(lambda x, y: x ^ y, block, iv))
+                processed_block = self.__des_crypt(block, crypt_type)
+                if crypt_type == self.DECRYPT:
+                    processed_block = list(map(lambda x, y: x ^ y, processed_block, iv))
+                    iv = block
+                else:
+                    iv = processed_block
+            else:
+                processed_block = self.__des_crypt(block, crypt_type)
+
+            # Add the resulting crypted block to our list
+            result.append(self.__bitlist_to_string(processed_block))
+            i += 8
+
+        # Return the full crypted string
+        return b''.join(result)
 
 class Python_TripleDES(_baseDes):
     """Triple DES encryption/decrytpion class.
@@ -131,7 +277,8 @@ class Python_TripleDES(_baseDes):
         The data must be a multiple of 8 bytes and will be encrypted
         with the already specified key.
         """
-        pass
+        data = self._guard_against_unicode(data)
+        return self.__key3.encrypt(self.__key2.decrypt(self.__key1.encrypt(data)))
 
     def decrypt(self, data):
         """Decrypt data and return bytes.
@@ -141,4 +288,5 @@ class Python_TripleDES(_baseDes):
         The data must be a multiple of 8 bytes and will be decrypted
         with the already specified key.
         """
-        pass
+        data = self._guard_against_unicode(data)
+        return self.__key1.decrypt(self.__key2.encrypt(self.__key3.decrypt(data)))
