@@ -226,3 +226,20 @@ def calc_key(version, secret, cipher_suite, label, handshake_hashes=None, client
 
 class MAC_SSL(object):
     pass
+
+def makeX(salt, username, password):
+    """
+    Calculate the X value for SRP protocol.
+    
+    :param bytes salt: A random salt
+    :param str username: The username
+    :param str password: The password
+    :return: The calculated X value
+    :rtype: int
+    """
+    from .utils import tlshashlib as hashlib
+    
+    username_password = (username + ":" + password).encode('utf-8')
+    inner_hash = hashlib.sha1(username_password).digest()
+    outer_hash = hashlib.sha1(salt + inner_hash).digest()
+    return bytesToNumber(outer_hash)

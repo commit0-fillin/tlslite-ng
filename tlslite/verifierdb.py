@@ -1,5 +1,6 @@
 """Class for storing SRP password verifiers."""
 from .utils.cryptomath import *
+import os
 from .utils.compat import *
 from tlslite import mathtls
 from .basedb import BaseDB
@@ -60,4 +61,15 @@ class VerifierDB(BaseDB):
         :rtype: tuple
         :returns: A tuple which may be stored in a VerifierDB.
         """
-        pass
+        if bits not in (1024, 1536, 2048, 3072, 4096, 6144, 8192):
+            raise ValueError("Bits must be one of (1024, 1536, 2048, 3072, 4096, 6144, 8192)")
+        
+        if len(username) >= 256:
+            raise ValueError("Username must be less than 256 characters")
+        
+        N, g = mathtls.goodGroupParameters[bits]
+        salt = os.urandom(16)
+        x = mathtls.makeX(salt, username, password)
+        verifier = pow(g, x, N)
+        
+        return (N, g, salt, verifier)
