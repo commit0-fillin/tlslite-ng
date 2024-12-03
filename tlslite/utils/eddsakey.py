@@ -25,7 +25,7 @@ class EdDSAKey(object):
 
         :rtype: bool
         """
-        pass
+        return hasattr(self, 'private_key') and self.private_key is not None
 
     def hashAndSign(self, data, rsaScheme=None, hAlg=None, sLen=None):
         """Hash and sign the passed-in bytes.
@@ -48,7 +48,12 @@ class EdDSAKey(object):
         :rtype: bytearray
         :returns: An EdDSA signature on the passed-in data.
         """
-        pass
+        if not self.hasPrivateKey():
+            raise ValueError("Private key is required for signing")
+        
+        # EdDSA doesn't use a separate hash function, it's part of the algorithm
+        signature = self.private_key.sign(data)
+        return bytearray(signature)
 
     def hashAndVerify(self, sig_bytes, data, rsaScheme=None, hAlg=None, sLen=None):
         """Hash and verify the passed-in bytes with the signature.
@@ -74,7 +79,11 @@ class EdDSAKey(object):
         :rtype: bool
         :returns: Whether the signature matches the passed-in data.
         """
-        pass
+        try:
+            # EdDSA doesn't use a separate hash function, it's part of the algorithm
+            return self.public_key.verify(sig_bytes, data)
+        except:
+            return False
 
     @staticmethod
     def sign(self, bytes, padding=None, hashAlg='sha1', saltLen=None):
@@ -96,7 +105,7 @@ class EdDSAKey(object):
         :type saltLen: int
         :param saltLen: Ignored
         """
-        pass
+        raise NotImplementedError("EdDSA does not support pre-hash signatures. Use hashAndSign instead.")
 
     @staticmethod
     def verify(self, sigBytes, bytes, padding=None, hashAlg=None, saltLen=None):
@@ -115,7 +124,7 @@ class EdDSAKey(object):
         :type padding: str
         :param padding: Ignored
         """
-        pass
+        raise NotImplementedError("EdDSA does not support pre-hash signatures. Use hashAndVerify instead.")
 
     def acceptsPassword(self):
         """Return True if the write() method accepts a password for use
@@ -123,7 +132,7 @@ class EdDSAKey(object):
 
         :rtype: bool
         """
-        pass
+        return True
 
     def write(self, password=None):
         """Return a string containing the key.
@@ -132,7 +141,24 @@ class EdDSAKey(object):
         :returns: A string describing the key, in whichever format (PEM)
             is native to the implementation.
         """
-        pass
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.serialization import Encoding, PrivateFormat, NoEncryption, BestAvailableEncryption
+
+        if self.hasPrivateKey():
+            if password:
+                encryption = BestAvailableEncryption(password.encode())
+            else:
+                encryption = NoEncryption()
+            return self.private_key.private_bytes(
+                encoding=Encoding.PEM,
+                format=PrivateFormat.PKCS8,
+                encryption_algorithm=encryption
+            ).decode()
+        else:
+            return self.public_key.public_bytes(
+                encoding=Encoding.PEM,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            ).decode()
 
     @staticmethod
     def generate(bits):
@@ -140,4 +166,14 @@ class EdDSAKey(object):
 
         :rtype: ~tlslite.utils.EdDSAKey.EdDSAKey
         """
-        pass
+        from cryptography.hazmat.primitives.asymmetric import ed25519, ed448
+        from tlslite.utils.python_eddsakey import Python_EdDSAKey
+
+        if bits == 256:
+            private_key = ed25519.Ed25519PrivateKey.generate()
+        elif bits == 456:
+            private_key = ed448.Ed448PrivateKey.generate()
+        else:
+            raise ValueError("Unsupported key size. Use 256 for Ed25519 or 456 for Ed448.")
+
+        return Python_EdDSAKey(private_key)
