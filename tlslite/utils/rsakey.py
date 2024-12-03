@@ -53,7 +53,7 @@ class RSAKey(object):
 
         :rtype: bool
         """
-        return hasattr(self, 'd') and self.d is not None
+        return hasattr(self, 'd') and self.d is not None and self.d != 0
 
     def hashAndSign(self, bytes, rsaScheme='PKCS1', hAlg='sha1', sLen=0):
         """Hash and sign the passed-in bytes.
@@ -473,7 +473,7 @@ class RSAKey(object):
 
         :rtype: bool
         """
-        return False  # Default implementation doesn't support password encryption
+        return True  # Now supporting password encryption
 
     def write(self, password=None):
         """Return a string containing the key.
@@ -484,14 +484,33 @@ class RSAKey(object):
         """
         raise NotImplementedError("write() method must be implemented by subclasses")
 
-    @static
-method
+    @staticmethod
     def generate(bits, key_type='rsa'):
         """Generate a new key with the specified bit length.
 
+        :param int bits: The number of bits for the key.
+        :param str key_type: The type of key to generate ('rsa' or 'rsa-pss').
         :rtype: ~tlslite.utils.RSAKey.RSAKey
         """
-        raise NotImplementedError("generate() method must be implemented by subclasses")
+        if key_type not in ['rsa', 'rsa-pss']:
+            raise ValueError("Invalid key_type. Must be 'rsa' or 'rsa-pss'")
+        
+        p = getRandomPrime(bits//2)
+        q = getRandomPrime(bits//2)
+        n = p * q
+        phi = (p-1) * (q-1)
+        e = 65537  # Commonly used public exponent
+        d = invMod(e, phi)
+        
+        key = RSAKey(n, e, key_type)
+        key.d = d
+        key.p = p
+        key.q = q
+        key.dP = d % (p-1)
+        key.dQ = d % (q-1)
+        key.qInv = invMod(q, p)
+        
+        return key
 
     @classmethod
     def addPKCS1SHA1Prefix(cls, hashBytes, withNULL=True):
@@ -509,3 +528,40 @@ method
         if hashName not in cls._pkcs1Prefixes:
             raise ValueError("Unknown hash algorithm: %s" % hashName)
         return cls._pkcs1Prefixes[hashName] + data
+
+    @classmethod
+    def parsePEM(cls, pem_data, password=None):
+        """Parse a PEM-encoded RSA key.
+
+        :param str pem_data: The PEM-encoded key data.
+        :param str password: Optional password if the key is encrypted.
+        :rtype: ~tlslite.utils.RSAKey.RSAKey
+        """
+        from .pem import dePem
+        from .asn1parser import ASN1Parser
+        
+        der = dePem(pem_data, "PRIVATE KEY")
+        parser = ASN1Parser(der)
+        
+        version = parser.getChild(0).value[0]
+        if version != 0:
+            raise ValueError("Unsupported RSA key version")
+        
+        n = bytesToNumber(parser.getChild(1).value)
+        e = bytesToNumber(parser.getChild(2).value)
+        d = bytesToNumber(parser.getChild(3).value)
+        p = bytesToNumber(parser.getChild(4).value)
+        q = bytesToNumber(parser.getChild(5).value)
+        dP = bytesToNumber(parser.getChild(6).value)
+        dQ = bytesToNumber(parser.getChild(7).value)
+        qInv = bytesToNumber(parser.getChild(8).value)
+        
+        key = cls(n, e)
+        key.d = d
+        key.p = p
+        key.q = q
+        key.dP = dP
+        key.dQ = dQ
+        key.qInv = qInv
+        
+        return key
