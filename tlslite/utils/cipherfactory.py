@@ -33,7 +33,18 @@ def createAES(key, IV, implList=None):
     :rtype: tlslite.utils.AES
     :returns: An AES object.
     """
-    pass
+    if implList is None:
+        implList = ["openssl", "pycrypto", "python"]
+
+    for impl in implList:
+        if impl == "openssl" and cryptomath.m2cryptoLoaded:
+            return openssl_aes.new(key, 2, IV)
+        elif impl == "pycrypto" and cryptomath.pycryptoLoaded:
+            return pycrypto_aes.new(key, 2, IV)
+        elif impl == "python":
+            return python_aes.new(key, 2, IV)
+
+    raise NotImplementedError("No AES implementation available")
 
 def createAESCTR(key, IV, implList=None):
     """Create a new AESCTR object.
@@ -47,7 +58,18 @@ def createAESCTR(key, IV, implList=None):
     :rtype: tlslite.utils.AES
     :returns: An AES object.
     """
-    pass
+    if implList is None:
+        implList = ["openssl", "pycrypto", "python"]
+
+    for impl in implList:
+        if impl == "openssl" and cryptomath.m2cryptoLoaded:
+            return openssl_aes.new(key, 2, IV)
+        elif impl == "pycrypto" and cryptomath.pycryptoLoaded:
+            return pycrypto_aes.new(key, 2, IV)
+        elif impl == "python":
+            return python_aes.new(key, 2, IV)
+
+    raise NotImplementedError("No AESCTR implementation available")
 
 def createAESGCM(key, implList=None):
     """Create a new AESGCM object.
@@ -58,7 +80,18 @@ def createAESGCM(key, implList=None):
     :rtype: tlslite.utils.AESGCM
     :returns: An AESGCM object.
     """
-    pass
+    if implList is None:
+        implList = ["openssl", "pycrypto", "python"]
+
+    for impl in implList:
+        if impl == "openssl" and cryptomath.m2cryptoLoaded:
+            return openssl_aesgcm.new(key)
+        elif impl == "pycrypto" and cryptomath.pycryptoLoaded:
+            return pycrypto_aesgcm.new(key)
+        elif impl == "python":
+            return python_aesgcm.new(key)
+
+    raise NotImplementedError("No AESGCM implementation available")
 
 def createAESCCM(key, implList=None):
     """ Create a new AESCCM object.
@@ -69,7 +102,16 @@ def createAESCCM(key, implList=None):
     :rtype: tlslite.utils.AESCCM
     :returns: An AESCCM object.
     """
-    pass
+    if implList is None:
+        implList = ["openssl", "python"]
+
+    for impl in implList:
+        if impl == "openssl" and cryptomath.m2cryptoLoaded:
+            return openssl_aesccm.new(key)
+        elif impl == "python":
+            return python_aesccm.new(key)
+
+    raise NotImplementedError("No AESCCM implementation available")
 
 def createAESCCM_8(key, implList=None):
     """ Create a new AESCCM object with truncated tag.
@@ -80,7 +122,16 @@ def createAESCCM_8(key, implList=None):
     :rtype: tlslite.utils.AESCCM
     :returns: An AESCCM object.
     """
-    pass
+    if implList is None:
+        implList = ["openssl", "python"]
+
+    for impl in implList:
+        if impl == "openssl" and cryptomath.m2cryptoLoaded:
+            return openssl_aesccm.new(key, tagLength=8)
+        elif impl == "python":
+            return python_aesccm.new(key, tagLength=8)
+
+    raise NotImplementedError("No AESCCM_8 implementation available")
 
 def createCHACHA20(key, implList=None):
     """Create a new CHACHA20_POLY1305 object.
@@ -91,7 +142,14 @@ def createCHACHA20(key, implList=None):
     :rtype: tlslite.utils.CHACHA20_POLY1305
     :returns: A ChaCha20/Poly1305 object
     """
-    pass
+    if implList is None:
+        implList = ["python"]
+
+    for impl in implList:
+        if impl == "python":
+            return python_chacha20_poly1305.new(key)
+
+    raise NotImplementedError("No CHACHA20_POLY1305 implementation available")
 
 def createRC4(key, IV, implList=None):
     """Create a new RC4 object.
@@ -105,7 +163,18 @@ def createRC4(key, IV, implList=None):
     :rtype: tlslite.utils.RC4
     :returns: An RC4 object.
     """
-    pass
+    if implList is None:
+        implList = ["openssl", "pycrypto", "python"]
+
+    for impl in implList:
+        if impl == "openssl" and cryptomath.m2cryptoLoaded:
+            return openssl_rc4.new(key)
+        elif impl == "pycrypto" and cryptomath.pycryptoLoaded:
+            return pycrypto_rc4.new(key)
+        elif impl == "python":
+            return python_rc4.new(key)
+
+    raise NotImplementedError("No RC4 implementation available")
 
 def createTripleDES(key, IV, implList=None):
     """Create a new 3DES object.
@@ -119,4 +188,15 @@ def createTripleDES(key, IV, implList=None):
     :rtype: tlslite.utils.TripleDES
     :returns: A 3DES object.
     """
-    pass
+    if implList is None:
+        implList = ["openssl", "pycrypto", "python"]
+
+    for impl in implList:
+        if impl == "openssl" and cryptomath.m2cryptoLoaded:
+            return openssl_tripledes.new(key, IV)
+        elif impl == "pycrypto" and cryptomath.pycryptoLoaded:
+            return pycrypto_tripledes.new(key, IV)
+        elif impl == "python":
+            return python_tripledes.new(key, IV)
+
+    raise NotImplementedError("No 3DES implementation available")
