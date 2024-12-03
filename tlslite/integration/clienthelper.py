@@ -73,6 +73,10 @@ class ClientHelper(object):
         self.privateKey = None
         self.checker = None
         self.anon = anon
+        self.settings = settings
+        self.tlsSession = None
+        self.serverName = None
+
         if username and password and (not (certChain or privateKey)):
             self.username = username
             self.password = password
@@ -80,23 +84,43 @@ class ClientHelper(object):
             self.certChain = certChain
             self.privateKey = privateKey
         elif not password and (not username) and (not certChain) and (not privateKey):
-            pass
+            if not anon:
+                raise ValueError('Either username/password, certChain/privateKey, or anon must be set')
         else:
             raise ValueError('Bad parameters')
+
         self.checker = checker
-        self.settings = settings
-        self.tlsSession = None
-        if host is not None and (not self._isIP(host)):
-            colon = host.find(':')
-            if colon > 0:
-                host = host[:colon]
-            self.serverName = host
-            if host and (not is_valid_hostname(host)):
-                raise ValueError('Invalid hostname: {0}'.format(host))
-        else:
-            self.serverName = None
+
+        if host is not None:
+            if not self._isIP(host):
+                colon = host.find(':')
+                if colon > 0:
+                    host = host[:colon]
+                self.serverName = host
+                if host and (not is_valid_hostname(host)):
+                    raise ValueError('Invalid hostname: {0}'.format(host))
 
     @staticmethod
     def _isIP(address):
         """Return True if the address is an IPv4 address"""
-        pass
+        try:
+            # Split the address into octets
+            octets = address.split('.')
+            
+            # Check if there are exactly 4 octets
+            if len(octets) != 4:
+                return False
+            
+            # Check each octet
+            for octet in octets:
+                # Check if the octet is a valid integer between 0 and 255
+                if not octet.isdigit() or int(octet) < 0 or int(octet) > 255:
+                    return False
+                
+                # Check for leading zeros (not allowed in IPv4)
+                if len(octet) > 1 and octet[0] == '0':
+                    return False
+            
+            return True
+        except:
+            return False
