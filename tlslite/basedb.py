@@ -24,7 +24,16 @@ class BaseDB(object):
 
         :raises anydbm.error: If there's a problem creating the database.
         """
-        pass
+        if self.filename:
+            self.lock.acquire()
+            try:
+                self.db = anydbm.open(self.filename, 'n')
+            except anydbm.error as e:
+                raise anydbm.error(f"Error creating database: {str(e)}")
+            finally:
+                self.lock.release()
+        else:
+            self.db = {}
 
     def open(self):
         """
@@ -33,7 +42,18 @@ class BaseDB(object):
         :raises anydbm.error: If there's a problem opening the database.
         :raises ValueError: If the database is not of the right type.
         """
-        pass
+        if self.filename:
+            self.lock.acquire()
+            try:
+                self.db = anydbm.open(self.filename, 'w')
+                if self.type not in self.db:
+                    raise ValueError(f"Database is not of type {self.type}")
+            except anydbm.error as e:
+                raise anydbm.error(f"Error opening database: {str(e)}")
+            finally:
+                self.lock.release()
+        else:
+            raise ValueError("Cannot open in-memory database")
 
     def __getitem__(self, username):
         if self.db == None:
@@ -93,4 +113,10 @@ class BaseDB(object):
         :rtype: list
         :returns: The usernames in the database.
         """
-        pass
+        if self.db is None:
+            raise AssertionError('DB not open')
+        self.lock.acquire()
+        try:
+            return list(self.db.keys())
+        finally:
+            self.lock.release()
