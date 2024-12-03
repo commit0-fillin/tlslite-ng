@@ -53,6 +53,6 @@ except Exception:
             if msg:
                 self._context.update(compatHMAC(msg))
 
-    def new(*args, **kwargs):
+    def new(key, msg=None, digestmod=None):
         """General constructor that works in FIPS mode."""
-        pass
+        return HMAC(key, msg, digestmod)
