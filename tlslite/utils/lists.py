@@ -14,7 +14,9 @@ def getFirstMatching(values, matches):
     :type matches: collections.abc.Container
     :param matches: list of items to check against
     """
-    pass
+    if values is None:
+        return None
+    return next((value for value in values if value in matches), None)
 
 def to_str_delimiter(values, delim=', ', last_delim=' or '):
     """
@@ -32,4 +34,9 @@ def to_str_delimiter(values, delim=', ', last_delim=' or '):
     :param last_delim: delimiter for last object in list
     :rtype: str
     """
-    pass
+    values = list(values)
+    if not values:
+        return ""
+    if len(values) == 1:
+        return str(values[0])
+    return delim.join(map(str, values[:-1])) + last_delim + str(values[-1])
