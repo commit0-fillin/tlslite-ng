@@ -47,21 +47,26 @@ class X509CertChain(object):
 
         Raise a SyntaxError if input is malformed.
         """
-        pass
+        try:
+            self.x509List = [X509().parse(cert) for cert in dePemList(s, "CERTIFICATE")]
+        except ValueError as e:
+            raise SyntaxError(str(e))
 
     def getNumCerts(self):
         """Get the number of certificates in this chain.
 
         :rtype: int
         """
-        pass
+        return len(self.x509List)
 
     def getEndEntityPublicKey(self):
         """Get the public key from the end-entity certificate.
 
         :rtype: ~tlslite.utils.rsakey.RSAKey`
         """
-        pass
+        if not self.x509List:
+            return None
+        return self.x509List[0].publicKey
 
     def getFingerprint(self):
         """Get the hex-encoded fingerprint of the end-entity certificate.
@@ -69,8 +74,13 @@ class X509CertChain(object):
         :rtype: str
         :returns: A hex-encoded fingerprint.
         """
-        pass
+        if not self.x509List:
+            return None
+        return self.x509List[0].getFingerprint()
 
     def getTackExt(self):
         """Get the TACK and/or Break Sigs from a TACK Cert in the chain."""
-        pass
+        for cert in self.x509List:
+            if cert.certAlg == "tack":
+                return cert.tackExt
+        return None
