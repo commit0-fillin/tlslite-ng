@@ -8,12 +8,12 @@ class Poly1305(object):
     @staticmethod
     def le_bytes_to_num(data):
         """Convert a number from little endian byte format"""
-        pass
+        return int.from_bytes(data, byteorder='little')
 
     @staticmethod
     def num_to_16_le_bytes(num):
         """Convert number to 16 bytes in little endian format"""
-        pass
+        return num.to_bytes(16, byteorder='little')
 
     def __init__(self, key):
         """Set the authenticator key"""
@@ -26,4 +26,12 @@ class Poly1305(object):
 
     def create_tag(self, data):
         """Calculate authentication tag for data"""
-        pass
+        for i in range(0, len(data), 16):
+            chunk = data[i:i+16]
+            if len(chunk) < 16:
+                chunk += b'\x01' + b'\x00' * (15 - len(chunk))
+            n = self.le_bytes_to_num(chunk)
+            self.acc += n
+            self.acc = (self.acc * self.r) % self.P
+        self.acc += self.s
+        return self.num_to_16_le_bytes(self.acc)
