@@ -59,11 +59,20 @@ class MessageSocket(RecordLayer):
 
         :rtype: generator
         """
-        pass
+        for result in self._recordLayer.recvRecord():
+            if result in (0, 1):
+                yield result
+            else:
+                header, parser = result
+                yield (header, parser)
 
     def recvMessageBlocking(self):
         """Blocking variant of :py:meth:`recvMessage`."""
-        pass
+        for result in self.recvMessage():
+            if result in (0, 1):
+                pass
+            else:
+                return result
 
     def flush(self):
         """
@@ -74,11 +83,23 @@ class MessageSocket(RecordLayer):
 
         :rtype: generator
         """
-        pass
+        while self._sendBuffer:
+            maximumSize = self.recordSize - 5
+            if len(self._sendBuffer) > maximumSize:
+                sendData = self._sendBuffer[:maximumSize]
+                self._sendBuffer = self._sendBuffer[maximumSize:]
+            else:
+                sendData = self._sendBuffer
+                self._sendBuffer = bytearray(0)
+
+            message = Message(self._sendBufferType, sendData)
+            for result in self._recordLayer.sendRecord(message):
+                yield result
 
     def flushBlocking(self):
         """Blocking variant of :py:meth:`flush`."""
-        pass
+        for result in self.flush():
+            pass
 
     def queueMessage(self, msg):
         """
@@ -92,11 +113,17 @@ class MessageSocket(RecordLayer):
 
         :rtype: generator
         """
-        pass
+        if self._sendBuffer and msg.contentType != self._sendBufferType:
+            for result in self.flush():
+                yield result
+
+        self._sendBuffer += msg.write()
+        self._sendBufferType = msg.contentType
 
     def queueMessageBlocking(self, msg):
         """Blocking variant of :py:meth:`queueMessage`."""
-        pass
+        for result in self.queueMessage(msg):
+            pass
 
     def sendMessage(self, msg):
         """
@@ -113,8 +140,12 @@ class MessageSocket(RecordLayer):
 
         :rtype: generator
         """
-        pass
+        for result in self.queueMessage(msg):
+            yield result
+        for result in self.flush():
+            yield result
 
     def sendMessageBlocking(self, msg):
         """Blocking variant of :py:meth:`sendMessage`."""
-        pass
+        for result in self.sendMessage(msg):
+            pass
