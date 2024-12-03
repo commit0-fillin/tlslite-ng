@@ -22,5 +22,31 @@ class SignedObject(object):
     _hash_algs_OIDs = {tuple([42, 134, 72, 134, 247, 13, 1, 1, 4]): 'md5', tuple([42, 134, 72, 134, 247, 13, 1, 1, 5]): 'sha1', tuple([42, 134, 72, 134, 247, 13, 1, 1, 14]): 'sha224', tuple([42, 134, 72, 134, 247, 13, 1, 1, 12]): 'sha384', tuple([42, 134, 72, 134, 247, 13, 1, 1, 11]): 'sha256', tuple([42, 134, 72, 134, 247, 13, 1, 1, 13]): 'sha512'}
 
     def verify_signature(self, publicKey, settings=None):
-        """ Verify signature in a reponse"""
-        pass
+        """Verify signature in a response"""
+        if settings is None:
+            settings = SignatureSettings()
+
+        if self.signature_alg not in self._hash_algs_OIDs.values():
+            raise ValueError("Unsupported signature algorithm")
+
+        hash_algorithm = self.signature_alg
+
+        if hash_algorithm not in settings.rsa_sig_hashes:
+            raise ValueError("Signature uses unacceptable hash algorithm")
+
+        if publicKey.key_size < settings.min_key_size:
+            raise ValueError("Public key too small")
+        
+        if publicKey.key_size > settings.max_key_size:
+            raise ValueError("Public key too large")
+
+        hash_object = tlshashlib.new(hash_algorithm)
+        hash_object.update(self.tbs_data)
+        digest = hash_object.digest()
+
+        try:
+            signature_valid = publicKey.verify(self.signature, digest)
+        except:
+            signature_valid = False
+
+        return signature_valid
