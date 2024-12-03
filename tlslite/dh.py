@@ -10,7 +10,13 @@ def parseBinary(data):
     :param bytes data: DH parameters
     :rtype: tuple of int
     """
-    pass
+    parser = ASN1Parser(data)
+    if parser.getChildCount() != 2:
+        raise ValueError("DH parameters must contain exactly two integers")
+    
+    prime = bytesToNumber(parser.getChild(0).value)
+    generator = bytesToNumber(parser.getChild(1).value)
+    return generator, prime
 
 def parse(data):
     """
@@ -22,4 +28,9 @@ def parse(data):
     :rtype: tuple of int
     :returns: generator and prime
     """
-    pass
+    try:
+        der = dePem(data, "DH PARAMETERS")
+    except ValueError:
+        der = data
+    
+    return parseBinary(der)
