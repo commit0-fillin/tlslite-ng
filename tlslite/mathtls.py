@@ -67,30 +67,82 @@ def paramStrength(param):
 
     :param param: prime or modulus
     :type param: int
+    :return: security level in bits
+    :rtype: int
     """
-    pass
+    bitLen = param.bit_length()
+    if bitLen < 1024:
+        return 80
+    elif bitLen < 2048:
+        return 112
+    elif bitLen < 3072:
+        return 128
+    elif bitLen < 7680:
+        return 192
+    else:
+        return 256
 
 def P_hash(mac_name, secret, seed, length):
     """Internal method for calculation the PRF in TLS."""
-    pass
+    import hmac
+    import math
+    
+    def hmac_hash(key, msg):
+        return hmac.new(key, msg, mac_name).digest()
+    
+    hash_size = len(hmac_hash(secret, seed))
+    n = math.ceil(length / hash_size)
+    
+    a = seed
+    output = b""
+    
+    for _ in range(n):
+        a = hmac_hash(secret, a)
+        output += hmac_hash(secret, a + seed)
+    
+    return output[:length]
 
 def PRF_1_2(secret, label, seed, length):
     """Pseudo Random Function for TLS1.2 ciphers that use SHA256"""
-    pass
+    from .utils import tlshashlib as hashlib
+    
+    seed = label + seed
+    return P_hash(hashlib.sha256, secret, seed, length)
 
 def PRF_1_2_SHA384(secret, label, seed, length):
     """Pseudo Random Function for TLS1.2 ciphers that use SHA384"""
-    pass
+    from .utils import tlshashlib as hashlib
+    
+    seed = label + seed
+    return P_hash(hashlib.sha384, secret, seed, length)
 
 @deprecated_method('Please use calc_key function instead.')
 def calcExtendedMasterSecret(version, cipherSuite, premasterSecret, handshakeHashes):
     """Derive Extended Master Secret from premaster and handshake msgs"""
-    pass
+    if version >= (3, 3):  # TLS 1.2+
+        if cipherSuite in CipherSuite.sha384PrfSuites:
+            return PRF_1_2_SHA384(premasterSecret, b"extended master secret",
+                                  handshakeHashes.digest("sha384"), 48)
+        else:
+            return PRF_1_2(premasterSecret, b"extended master secret",
+                           handshakeHashes.digest("sha256"), 48)
+    else:  # TLS 1.1 and earlier
+        return PRF_1_2(premasterSecret, b"extended master secret",
+                       handshakeHashes.digest("md5") + handshakeHashes.digest("sha1"), 48)
 
 @deprecated_method('Please use calc_key function instead.')
 def calcMasterSecret(version, cipherSuite, premasterSecret, clientRandom, serverRandom):
     """Derive Master Secret from premaster secret and random values"""
-    pass
+    if version >= (3, 3):  # TLS 1.2+
+        if cipherSuite in CipherSuite.sha384PrfSuites:
+            return PRF_1_2_SHA384(premasterSecret, b"master secret",
+                                  clientRandom + serverRandom, 48)
+        else:
+            return PRF_1_2(premasterSecret, b"master secret",
+                           clientRandom + serverRandom, 48)
+    else:  # TLS 1.1 and earlier
+        return PRF_1_2(premasterSecret, b"master secret",
+                       clientRandom + serverRandom, 48)
 
 @deprecated_method('Please use calc_key function instead.')
 def calcFinished(version, masterSecret, cipherSuite, handshakeHashes, isClient):
@@ -103,7 +155,21 @@ def calcFinished(version, masterSecret, cipherSuite, handshakeHashes, isClient):
     :param isClient: whether the calculation should be performed for message
         sent by client (True) or by server (False) side of connection
     """
-    pass
+    if isClient:
+        label = b"client finished"
+    else:
+        label = b"server finished"
+
+    if version >= (3, 3):  # TLS 1.2+
+        if cipherSuite in CipherSuite.sha384PrfSuites:
+            return PRF_1_2_SHA384(masterSecret, label,
+                                  handshakeHashes.digest("sha384"), 12)
+        else:
+            return PRF_1_2(masterSecret, label,
+                           handshakeHashes.digest("sha256"), 12)
+    else:  # TLS 1.1 and earlier
+        return PRF_1_2(masterSecret, label,
+                       handshakeHashes.digest("md5") + handshakeHashes.digest("sha1"), 12)
 
 def calc_key(version, secret, cipher_suite, label, handshake_hashes=None, client_random=None, server_random=None, output_length=None):
     """
@@ -127,7 +193,36 @@ def calc_key(version, secret, cipher_suite, label, handshake_hashes=None, client
         master secret or key expansion.
     :param int output_length: Number of bytes to output.
     """
-    pass
+    if version >= (3, 3):  # TLS 1.2+
+        if cipher_suite in CipherSuite.sha384PrfSuites:
+            prf_func = PRF_1_2_SHA384
+            hash_name = "sha384"
+        else:
+            prf_func = PRF_1_2
+            hash_name = "sha256"
+    else:  # TLS 1.1 and earlier
+        prf_func = PRF_1_2
+        hash_name = None
+
+    if label in (b"extended master secret", b"finished"):
+        if hash_name:
+            seed = handshake_hashes.digest(hash_name)
+        else:
+            seed = handshake_hashes.digest("md5") + handshake_hashes.digest("sha1")
+    elif label in (b"master secret", b"key expansion"):
+        seed = client_random + server_random
+    else:
+        raise ValueError("Unknown label: {}".format(label))
+
+    if output_length is None:
+        if label == b"finished":
+            output_length = 12
+        elif label in (b"master secret", b"extended master secret"):
+            output_length = 48
+        else:
+            raise ValueError("output_length must be specified for key expansion")
+
+    return prf_func(secret, label, seed, output_length)
 
 class MAC_SSL(object):
     pass
