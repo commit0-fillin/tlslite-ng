@@ -23,23 +23,36 @@ class BufferedSocket(object):
 
     def send(self, data):
         """Send data to the socket"""
-        pass
+        if self.buffer_writes:
+            self._write_queue.append(data)
+            return len(data)
+        else:
+            return self.socket.send(data)
 
     def sendall(self, data):
         """Send data to the socket"""
-        pass
+        if self.buffer_writes:
+            self._write_queue.append(data)
+        else:
+            self.socket.sendall(data)
 
     def flush(self):
         """Send all buffered data"""
-        pass
+        while self._write_queue:
+            data = self._write_queue.popleft()
+            self.socket.sendall(data)
 
     def recv(self, bufsize):
         """Receive data from socket (socket emulation)"""
-        pass
+        if self._read_buffer:
+            ret = bytes(self._read_buffer[:bufsize])
+            del self._read_buffer[:bufsize]
+            return ret
+        return self.socket.recv(bufsize)
 
     def getsockname(self):
         """Return the socket's own address (socket emulation)."""
-        pass
+        return self.socket.getsockname()
 
     def getpeername(self):
         """
@@ -47,11 +60,11 @@ class BufferedSocket(object):
 
         (socket emulation)
         """
-        pass
+        return self.socket.getpeername()
 
     def settimeout(self, value):
         """Set a timeout on blocking socket operations (socket emulation)."""
-        pass
+        self.socket.settimeout(value)
 
     def gettimeout(self):
         """
@@ -59,16 +72,18 @@ class BufferedSocket(object):
 
         (socket emulation)
         """
-        pass
+        return self.socket.gettimeout()
 
     def setsockopt(self, level, optname, value):
         """Set the value of the given socket option (socket emulation)."""
-        pass
+        self.socket.setsockopt(level, optname, value)
 
     def shutdown(self, how):
         """Shutdown the underlying socket."""
-        pass
+        self.flush()
+        self.socket.shutdown(how)
 
     def close(self):
         """Close the underlying socket."""
-        pass
+        self.flush()
+        self.socket.close()
