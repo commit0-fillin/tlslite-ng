@@ -88,7 +88,35 @@ class XMLRPCTransport(xmlrpclib.Transport, ClientHelper):
         xmlrpclib.Transport.__init__(self, use_datetime)
         self.ignoreAbruptClose = ignoreAbruptClose
         ClientHelper.__init__(self, username, password, certChain, privateKey, checker, settings)
+        self.use_datetime = use_datetime
 
     def make_connection(self, host):
         """Make a connection to `host`. Reuse keepalive connections."""
-        pass
+        if self.conn_class_is_http:
+            # Python 2.7 or earlier, use old-style connection
+            chost, self._extra_headers, x509 = self.get_host_info(host)
+            return HTTPTLSConnection(
+                chost,
+                None,
+                username=self.username,
+                password=self.password,
+                certChain=self.certChain,
+                privateKey=self.privateKey,
+                checker=self.checker,
+                settings=self.settings,
+                ignoreAbruptClose=self.ignoreAbruptClose
+            )
+        else:
+            # Python 3.x, use new-style connection
+            chost, self._extra_headers, x509 = self.get_host_info(host)
+            return self._connection_class(
+                chost,
+                None,
+                username=self.username,
+                password=self.password,
+                certChain=self.certChain,
+                privateKey=self.privateKey,
+                checker=self.checker,
+                settings=self.settings,
+                ignoreAbruptClose=self.ignoreAbruptClose
+            )
