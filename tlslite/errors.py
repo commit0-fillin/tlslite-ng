@@ -65,7 +65,7 @@ class TLSLocalAlert(TLSAlert):
     def __str__(self):
         alertStr = AlertDescription.toStr(self.description)
         if self.message:
-            return alertStr + ': ' + self.message
+            return f"{alertStr}: {self.message}"
         else:
             return alertStr
 
@@ -85,6 +85,7 @@ class TLSRemoteAlert(TLSAlert):
     def __init__(self, alert):
         self.description = alert.description
         self.level = alert.level
+        super().__init__(AlertDescription.toStr(self.description))
 
     def __str__(self):
         alertStr = AlertDescription.toStr(self.description)
