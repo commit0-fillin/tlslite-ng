@@ -9,4 +9,6 @@ def none_as_unknown(text, number):
     :type number: int
     :param number: number used in text
     """
-    pass
+    if text is None or text == "":
+        return f"unknown({number})"
+    return text
