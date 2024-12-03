@@ -90,11 +90,29 @@ class VirtualHost(object):
 
     def matches_hostname(self, hostname):
         """Checks if the virtual host can serve hostname"""
-        pass
+        if not hostname:
+            return False
+        for name in self.hostnames:
+            if name == hostname:
+                return True
+            if name.startswith('*.') and hostname.endswith(name[1:]):
+                return True
+        return False
 
     def validate(self):
         """Sanity check the settings"""
-        pass
+        if not self.keys:
+            raise ValueError("No keys specified for virtual host")
+        for keypair in self.keys:
+            keypair.validate()
+        if not self.hostnames:
+            raise ValueError("No hostnames specified for virtual host")
+        for hostname in self.hostnames:
+            if not isinstance(hostname, str):
+                raise ValueError("Hostname must be a string")
+        for cert in self.trust_anchors:
+            if not cert.is_ca:
+                raise ValueError("Trust anchor is not a CA certificate")
 
 class HandshakeSettings(object):
     """
@@ -316,11 +334,43 @@ class HandshakeSettings(object):
 
     def _init_key_settings(self):
         """Create default variables for key-related settings."""
-        pass
+        self.minKeySize = 1023
+        self.maxKeySize = 8193
+        self.rsaSigHashes = list(HashAlgorithm.all)
+        self.rsaSigHashes.remove(HashAlgorithm.md5)
+        self.rsaSchemes = list(SignatureScheme.all_rsa_schemes)
+        self.dsaSigHashes = list(HashAlgorithm.all)
+        self.dsaSigHashes.remove(HashAlgorithm.md5)
+        self.ecdsaSigHashes = list(HashAlgorithm.all)
+        self.ecdsaSigHashes.remove(HashAlgorithm.md5)
+        self.more_sig_schemes = []
+        self.eccCurves = list(GroupName.allEC)
+        self.keyShares = []
+        self.dhParams = None
+        self.dhGroups = list(GroupName.allFF)
+        self.defaultCurve = GroupName.secp256r1
+        self.keyExchangeNames = list(KeyExchangeNames)
 
     def _init_misc_extensions(self):
         """Default variables for assorted extensions."""
-        pass
+        self.useExtendedMasterSecret = True
+        self.requireExtendedMasterSecret = False
+        self.useEncryptThenMAC = True
+        self.usePaddingExtension = True
+        self.useExtendedRandom = False
+        self.use_heartbeat_extension = False
+        self.heartbeat_response_callback = None
+        self.record_size_limit = None
+        self.use_ocsp_stapling = True
+        self.use_scts = True
+        self.padding_cb = None
+        self.pskConfigs = []
+        self.psk_modes = ['psk_dhe_ke', 'psk_ke']
+        self.ticketKeys = []
+        self.ticketCipher = 'aes256gcm'
+        self.ticketLifetime = 24 * 60 * 60  # 24 hours, in seconds
+        self.ticket_count = 1
+        self.max_early_data = 2**14  # 16KB
 
     def __init__(self):
         """Initialise default values for settings."""
@@ -337,17 +387,46 @@ class HandshakeSettings(object):
     @staticmethod
     def _sanityCheckKeySizes(other):
         """Check if key size limits are sane"""
-        pass
+        if other.minKeySize < 512:
+            raise ValueError("minKeySize too small")
+        if other.minKeySize > 16384:
+            raise ValueError("minKeySize too large")
+        if other.maxKeySize < 512:
+            raise ValueError("maxKeySize too small")
+        if other.maxKeySize > 16384:
+            raise ValueError("maxKeySize too large")
+        if other.maxKeySize < other.minKeySize:
+            raise ValueError("maxKeySize smaller than minKeySize")
 
     @staticmethod
     def _not_matching(values, sieve):
         """Return list of items from values that are not in sieve."""
-        pass
+        return [val for val in values if val not in sieve]
 
     @staticmethod
     def _sanityCheckCipherSettings(other):
         """Check if specified cipher settings are known."""
-        pass
+        not_matching = HandshakeSettings._not_matching(other.cipherNames,
+                                                       CipherSuite.ietfNames)
+        if not_matching:
+            raise ValueError("Unknown cipher name: {0}".format(not_matching))
+
+        not_matching = HandshakeSettings._not_matching(other.macNames,
+                                                       MAC_NAMES)
+        if not_matching:
+            raise ValueError("Unknown MAC name: {0}".format(not_matching))
+
+        not_matching = HandshakeSettings._not_matching(other.keyExchangeNames,
+                                                       KEY_EXCHANGE_NAMES)
+        if not_matching:
+            raise ValueError("Unknown key exchange name: {0}"
+                             .format(not_matching))
+
+        not_matching = HandshakeSettings._not_matching(other.cipherImplementations,
+                                                       CIPHER_IMPLEMENTATIONS)
+        if not_matching:
+            raise ValueError("Unknown cipher implementation: {0}"
+                             .format(not_matching))
 
     @staticmethod
     def _sanityCheckECDHSettings(other):
@@ -428,7 +507,33 @@ class HandshakeSettings(object):
         :returns: a self-consistent copy of settings
         :raises ValueError: when settings are invalid, insecure or unsupported.
         """
-        pass
+        other = HandshakeSettings()
+        other._init_key_settings()
+        other._init_misc_extensions()
+        
+        other.minVersion = self.minVersion
+        other.maxVersion = self.maxVersion
+        other.versions = self.versions
+        other.cipherNames = self.cipherNames
+        other.macNames = self.macNames
+        other.keyExchangeNames = self.keyExchangeNames
+        other.cipherImplementations = self.cipherImplementations
+        
+        self._sanityCheckKeySizes(other)
+        self._sanityCheckPrimitivesNames(other)
+        self._sanityCheckProtocolVersions(other)
+        self._sanityCheckExtensions(other)
+        self._sanityCheckDHSettings(other)
+        self._sanityCheckPsks(other)
+        self._sanityCheckTicketSettings(other)
+        
+        other._sanity_check_ciphers()
+        other._sanity_check_implementations()
+        
+        if not other.getCertificateTypes():
+            raise ValueError("No supported certificate types")
+        
+        return other
 
     def getCertificateTypes(self):
         """Get list of certificate types as IDs"""
