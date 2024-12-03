@@ -27,7 +27,13 @@ class HandshakeHashes(object):
 
         :param bytearray data: serialized TLS handshake message
         """
-        pass
+        self._handshakeMD5.update(compatHMAC(data))
+        self._handshakeSHA.update(compatHMAC(data))
+        self._handshakeSHA224.update(compatHMAC(data))
+        self._handshakeSHA256.update(compatHMAC(data))
+        self._handshakeSHA384.update(compatHMAC(data))
+        self._handshakeSHA512.update(compatHMAC(data))
+        self._handshake_buffer += data
 
     def digest(self, digest=None):
         """
@@ -37,7 +43,20 @@ class HandshakeHashes(object):
 
         :param str digest: name of digest to return
         """
-        pass
+        if digest == 'md5':
+            return self._handshakeMD5.digest()
+        elif digest == 'sha1':
+            return self._handshakeSHA.digest()
+        elif digest == 'sha224':
+            return self._handshakeSHA224.digest()
+        elif digest == 'sha256':
+            return self._handshakeSHA256.digest()
+        elif digest == 'sha384':
+            return self._handshakeSHA384.digest()
+        elif digest == 'sha512':
+            return self._handshakeSHA512.digest()
+        else:
+            raise ValueError("Unknown digest type")
 
     def digestSSL(self, masterSecret, label):
         """
@@ -48,7 +67,21 @@ class HandshakeHashes(object):
         :param bytearray masterSecret: value of the master secret
         :param bytearray label: label to include in the calculation
         """
-        pass
+        md5_hash = self._handshakeMD5.copy()
+        sha_hash = self._handshakeSHA.copy()
+
+        md5_hash.update(compatHMAC(label))
+        md5_hash.update(compatHMAC(masterSecret))
+        md5_hash.update(b'\x36' * 48)
+
+        sha_hash.update(compatHMAC(label))
+        sha_hash.update(compatHMAC(masterSecret))
+        sha_hash.update(b'\x36' * 40)
+
+        md5_result = md5_hash.digest()
+        sha_result = sha_hash.digest()
+
+        return md5_result + sha_result
 
     def copy(self):
         """
@@ -59,4 +92,12 @@ class HandshakeHashes(object):
 
         :rtype: HandshakeHashes
         """
-        pass
+        new = HandshakeHashes()
+        new._handshakeMD5 = self._handshakeMD5.copy()
+        new._handshakeSHA = self._handshakeSHA.copy()
+        new._handshakeSHA224 = self._handshakeSHA224.copy()
+        new._handshakeSHA256 = self._handshakeSHA256.copy()
+        new._handshakeSHA384 = self._handshakeSHA384.copy()
+        new._handshakeSHA512 = self._handshakeSHA512.copy()
+        new._handshake_buffer = self._handshake_buffer[:]
+        return new
