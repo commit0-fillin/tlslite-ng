@@ -28,19 +28,33 @@ class CHACHA20_POLY1305(object):
     @staticmethod
     def poly1305_key_gen(key, nonce):
         """Generate the key for the Poly1305 authenticator"""
-        pass
+        cipher = ChaCha(key, nonce)
+        return cipher.encrypt(b'\x00' * 32)[:32]
 
     @staticmethod
     def pad16(data):
         """Return padding for the Associated Authenticated Data"""
-        pass
+        if len(data) % 16 == 0:
+            return b""
+        return b"\x00" * (16 - (len(data) % 16))
 
     def seal(self, nonce, plaintext, data):
         """
         Encrypts and authenticates plaintext using nonce and data. Returns the
         ciphertext, consisting of the encrypted plaintext and tag concatenated.
         """
-        pass
+        otk = self.poly1305_key_gen(self.key, nonce)
+        cipher = ChaCha(self.key, nonce, counter=1)
+        ciphertext = cipher.encrypt(plaintext)
+
+        mac_data = data + self.pad16(data)
+        mac_data += ciphertext + self.pad16(ciphertext)
+        mac_data += struct.pack('<Q', len(data))
+        mac_data += struct.pack('<Q', len(ciphertext))
+
+        tag = Poly1305(otk).create_tag(mac_data)
+
+        return ciphertext + tag
 
     def open(self, nonce, ciphertext, data):
         """
@@ -48,4 +62,23 @@ class CHACHA20_POLY1305(object):
         tag is valid, the plaintext is returned. If the tag is invalid,
         returns None.
         """
-        pass
+        if len(ciphertext) < self.tagLength:
+            return None
+
+        expected_tag = ciphertext[-self.tagLength:]
+        ciphertext = ciphertext[:-self.tagLength]
+
+        otk = self.poly1305_key_gen(self.key, nonce)
+
+        mac_data = data + self.pad16(data)
+        mac_data += ciphertext + self.pad16(ciphertext)
+        mac_data += struct.pack('<Q', len(data))
+        mac_data += struct.pack('<Q', len(ciphertext))
+
+        tag = Poly1305(otk).create_tag(mac_data)
+
+        if not ct_compare_digest(tag, expected_tag):
+            return None
+
+        cipher = ChaCha(self.key, nonce, counter=1)
+        return cipher.decrypt(ciphertext)
