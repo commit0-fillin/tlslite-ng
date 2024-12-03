@@ -65,6 +65,9 @@ class IMAP4_TLS(IMAP4, ClientHelper):
         """
         ClientHelper.__init__(self, username, password, certChain, privateKey, checker, settings)
         IMAP4.__init__(self, host, port)
+        self.host = host
+        self.port = port
+        self._tls_established = False
 
     def open(self, host='', port=IMAP4_TLS_PORT, timeout=None):
         """Setup connection to remote server on "host:port".
@@ -72,4 +75,44 @@ class IMAP4_TLS(IMAP4, ClientHelper):
         This connection will be used by the routines:
         read, readline, send, shutdown.
         """
-        pass
+        self.host = host or self.host
+        self.port = port or self.port
+        self.timeout = timeout
+
+        # Create a socket and wrap it with TLSConnection
+        sock = socket.create_connection((self.host, self.port), self.timeout)
+        self.sock = TLSConnection(sock)
+
+        # Perform the TLS handshake
+        try:
+            if self.certChain and self.privateKey:
+                self.sock.handshakeClientCert(certChain=self.certChain,
+                                              privateKey=self.privateKey,
+                                              serverName=self.host,
+                                              settings=self.settings)
+            elif self.username and self.password:
+                self.sock.handshakeClientSRP(username=self.username,
+                                             password=self.password,
+                                             serverName=self.host,
+                                             settings=self.settings)
+            else:
+                self.sock.handshakeClientAnonymous(serverName=self.host,
+                                                   settings=self.settings)
+
+            if self.checker:
+                try:
+                    self.checker(self.sock)
+                except TLSAuthenticationError:
+                    self.close()
+                    raise
+
+            self._tls_established = True
+
+        except TLSError as e:
+            self.close()
+            raise
+
+        # Get the welcome message from the server
+        self.welcome = self._get_response()
+        if self.welcome is None:
+            raise IMAP4.abort('no IMAP4 server welcome message')
