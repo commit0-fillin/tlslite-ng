@@ -6,11 +6,16 @@ if m2cryptoLoaded:
 
     def new(key, mode, IV):
         """
-        Try using AES CTR from m2crpyto,
+        Try using AES CTR from m2crypto,
         if it is not available fall back to the
         python implementation.
         """
-        pass
+        if M2CRYPTO_AES_CTR and mode == 2:  # MODE_CTR
+            return OpenSSL_CTR(key, mode, IV)
+        elif mode == 2:  # MODE_CTR
+            return Python_AES_CTR(key, mode, IV)
+        else:
+            return OpenSSL_AES(key, mode, IV)
 
     class OpenSSL_AES(AES):
 
