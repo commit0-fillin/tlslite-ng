@@ -36,7 +36,16 @@ class AsyncStateMachine:
         :rtype: bool or None
         :returns: If the state machine wants to read.
         """
-        pass
+        if self.handshaker:
+            return self.handshaker.wantsReadEvent()
+        elif self.closer:
+            return self.closer.wantsReadEvent()
+        elif self.reader:
+            return True
+        elif self.writer:
+            return False
+        else:
+            return None
 
     def wantsWriteEvent(self):
         """If the state machine wants to write.
@@ -48,41 +57,84 @@ class AsyncStateMachine:
         :rtype: bool or None
         :returns: If the state machine wants to write.
         """
-        pass
+        if self.handshaker:
+            return self.handshaker.wantsWriteEvent()
+        elif self.closer:
+            return self.closer.wantsWriteEvent()
+        elif self.reader:
+            return False
+        elif self.writer:
+            return True
+        else:
+            return None
 
     def outConnectEvent(self):
         """Called when a handshake operation completes.
 
         May be overridden in subclass.
         """
-        pass
+        self.handshaker = None
+        self.result = True
 
     def outCloseEvent(self):
         """Called when a close operation completes.
 
         May be overridden in subclass.
         """
-        pass
+        self.closer = None
+        self.result = True
 
     def outReadEvent(self, readBuffer):
         """Called when a read operation completes.
 
         May be overridden in subclass."""
-        pass
+        self.reader = None
+        self.result = readBuffer
 
     def outWriteEvent(self):
         """Called when a write operation completes.
 
         May be overridden in subclass."""
-        pass
+        self.writer = None
+        self.result = True
 
     def inReadEvent(self):
         """Tell the state machine it can read from the socket."""
-        pass
+        if self.handshaker:
+            try:
+                self.handshaker.send(None)
+            except StopIteration:
+                self.outConnectEvent()
+        elif self.closer:
+            try:
+                self.closer.send(None)
+            except StopIteration:
+                self.outCloseEvent()
+        elif self.reader:
+            try:
+                readBuffer = self.reader.send(None)
+                self.outReadEvent(readBuffer)
+            except StopIteration:
+                self.outReadEvent(None)
 
     def inWriteEvent(self):
         """Tell the state machine it can write to the socket."""
-        pass
+        if self.handshaker:
+            try:
+                self.handshaker.send(None)
+            except StopIteration:
+                self.outConnectEvent()
+        elif self.closer:
+            try:
+                self.closer.send(None)
+            except StopIteration:
+                self.outCloseEvent()
+        elif self.writer:
+            try:
+                self.writer.send(None)
+                self.outWriteEvent()
+            except StopIteration:
+                self.outWriteEvent()
 
     def setHandshakeOp(self, handshaker):
         """Start a handshake operation.
@@ -92,7 +144,9 @@ class AsyncStateMachine:
             :py:meth:`~.TLSConnection.handshakeServerAsync` , or
             handshakeClientxxx(..., async_=True).
         """
-        pass
+        self._clear()
+        self.handshaker = handshaker
+        self.result = None
 
     def setServerHandshakeOp(self, **args):
         """Start a handshake operation.
@@ -100,16 +154,22 @@ class AsyncStateMachine:
         The arguments passed to this function will be forwarded to
         :py:obj:`~tlslite.tlsconnection.TLSConnection.handshakeServerAsync`.
         """
-        pass
+        self._clear()
+        self.handshaker = self.tlsConnection.handshakeServerAsync(**args)
+        self.result = None
 
     def setCloseOp(self):
         """Start a close operation.
         """
-        pass
+        self._clear()
+        self.closer = self.tlsConnection.closeAsync()
+        self.result = None
 
     def setWriteOp(self, writeBuffer):
         """Start a write operation.
 
         :param str writeBuffer: The string to transmit.
         """
-        pass
+        self._clear()
+        self.writer = self.tlsConnection.writeAsync(writeBuffer)
+        self.result = None
