@@ -40,7 +40,7 @@ class DSAKey(object):
 
         :rtype: bool
         """
-        pass
+        return self.x is not None
 
     def hashAndSign(self, data, hAlg):
         """Hash and sign the passed-in bytes.
@@ -58,7 +58,31 @@ class DSAKey(object):
         :rtype: bytearray
         :returns: An DSA signature on the passed-in data.
         """
-        pass
+        if not self.hasPrivateKey():
+            raise ValueError("Private key is required for signing")
+
+        import hashlib
+        import random
+        from .compat import compatHMAC
+
+        # Hash the data
+        hash_obj = hashlib.new(hAlg)
+        hash_obj.update(compatHMAC(data))
+        hashed = hash_obj.digest()
+
+        # Generate k (random number) and r
+        k = random.randrange(1, self.q)
+        r = pow(self.g, k, self.p) % self.q
+
+        # Calculate s
+        k_inv = pow(k, -1, self.q)
+        s = (k_inv * (int.from_bytes(hashed, 'big') + self.x * r)) % self.q
+
+        # Convert r and s to bytearray
+        signature = bytearray((r).to_bytes((r.bit_length() + 7) // 8, 'big'))
+        signature += bytearray((s).to_bytes((s.bit_length() + 7) // 8, 'big'))
+
+        return signature
 
     def hashAndVerify(self, signature, data, hAlg='sha1'):
         """Hash and verify the passed-in bytes with signature.
@@ -75,7 +99,33 @@ class DSAKey(object):
         :rtype: bool
         :returns: return True if verification is OK.
         """
-        pass
+        import hashlib
+        from .compat import compatHMAC
+
+        # Extract r and s from signature
+        sig_len = len(signature) // 2
+        r = int.from_bytes(signature[:sig_len], 'big')
+        s = int.from_bytes(signature[sig_len:], 'big')
+
+        # Check if r and s are in the correct range
+        if r <= 0 or r >= self.q or s <= 0 or s >= self.q:
+            return False
+
+        # Hash the data
+        hash_obj = hashlib.new(hAlg)
+        hash_obj.update(compatHMAC(data))
+        hashed = int.from_bytes(hash_obj.digest(), 'big')
+
+        # Compute w, u1, and u2
+        w = pow(s, -1, self.q)
+        u1 = (hashed * w) % self.q
+        u2 = (r * w) % self.q
+
+        # Compute v
+        v = ((pow(self.g, u1, self.p) * pow(self.y, u2, self.p)) % self.p) % self.q
+
+        # Verify the signature
+        return v == r
 
     @staticmethod
     def generate(L, N):
@@ -90,7 +140,26 @@ class DSAKey(object):
         :rtype: DSAkey
         :returns: DSAkey(domain parameters, private key, public key)
         """
-        pass
+        import random
+
+        # Generate p and q
+        p, q = DSAKey.generate_qp(L, N)
+
+        # Generate g
+        h = 2
+        while True:
+            g = pow(h, (p - 1) // q, p)
+            if g > 1:
+                break
+            h += 1
+
+        # Generate private key x
+        x = random.randrange(1, q)
+
+        # Generate public key y
+        y = pow(g, x, p)
+
+        return DSAKey(p, q, g, x, y)
 
     @staticmethod
     def generate_qp(L, N):
@@ -105,4 +174,17 @@ class DSAKey(object):
         :rtype: (int, int)
         :returns: new p and q key parameters
         """
-        pass
+        import random
+        from .cryptomath import isPrime, getRandomPrime
+
+        # Generate q
+        q = getRandomPrime(N)
+
+        # Generate p
+        while True:
+            x = random.getrandbits(L - N)
+            p = q * x + 1
+            if p.bit_length() == L and isPrime(p):
+                break
+
+        return p, q
