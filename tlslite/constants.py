@@ -12,7 +12,11 @@ class TLSEnum(object):
     @classmethod
     def _recursiveVars(cls, klass):
         """Call vars recursively on base classes"""
-        pass
+        result = {}
+        for base in klass.__bases__:
+            result.update(cls._recursiveVars(base))
+        result.update(vars(klass))
+        return result
 
     @classmethod
     def toRepr(cls, value, blacklist=None):
@@ -21,12 +25,22 @@ class TLSEnum(object):
 
         name if found, None otherwise
         """
-        pass
+        if blacklist is None:
+            blacklist = []
+        attrs = cls._recursiveVars(cls)
+        for key, val in attrs.items():
+            if key[0] != '_' and val == value and key not in blacklist:
+                return key
+        return None
 
     @classmethod
     def toStr(cls, value, blacklist=None):
         """Convert numeric type to human-readable string if possible"""
-        pass
+        name = cls.toRepr(value, blacklist)
+        if name is None:
+            return str(value)
+        else:
+            return name
 
 class CertificateType(TLSEnum):
     x509 = 0
@@ -93,7 +107,12 @@ class ContentType(TLSEnum):
     @classmethod
     def toRepr(cls, value, blacklist=None):
         """Convert numeric type to name representation"""
-        pass
+        if blacklist is None:
+            blacklist = []
+        if isinstance(value, tuple):
+            return super(SignatureScheme, cls).toRepr(value, blacklist)
+        else:
+            return super(SignatureScheme, cls).toRepr((value >> 8, value & 0xFF), blacklist)
 
 class ExtensionType(TLSEnum):
     """TLS Extension Type registry values"""
@@ -182,7 +201,12 @@ class SignatureScheme(TLSEnum):
     @classmethod
     def toRepr(cls, value, blacklist=None):
         """Convert numeric type to name representation"""
-        pass
+        if blacklist is None:
+            blacklist = []
+        try:
+            return super(GroupName, cls).toRepr(value, blacklist)
+        except:
+            return None
 
     @staticmethod
     def getKeyType(scheme):
@@ -191,17 +215,43 @@ class SignatureScheme(TLSEnum):
 
         E.g. for "rsa_pkcs1_sha1" it returns "rsa"
         """
-        pass
+        name = SignatureScheme.toStr(scheme)
+        if name.startswith(("rsa", "dsa", "ecdsa")):
+            return name.split('_')[0]
+        elif name.startswith(("ed25519", "ed448")):
+            return name
+        else:
+            raise ValueError("Unknown signature scheme: {}".format(scheme))
 
     @staticmethod
     def getPadding(scheme):
         """Return the name of padding scheme used in signature scheme."""
-        pass
+        name = SignatureScheme.toStr(scheme)
+        if "pkcs1" in name:
+            return "pkcs1"
+        elif "pss" in name:
+            return "pss"
+        else:
+            return None
 
     @staticmethod
     def getHash(scheme):
         """Return the name of hash used in signature scheme."""
-        pass
+        name = SignatureScheme.toStr(scheme)
+        if "md5" in name:
+            return "md5"
+        elif "sha1" in name:
+            return "sha1"
+        elif "sha224" in name:
+            return "sha224"
+        elif "sha256" in name:
+            return "sha256"
+        elif "sha384" in name:
+            return "sha384"
+        elif "sha512" in name:
+            return "sha512"
+        else:
+            return None
 
 class AlgorithmOID(TLSEnum):
     """
@@ -942,24 +992,31 @@ class CipherSuite:
     @staticmethod
     def filterForVersion(suites, minVersion, maxVersion):
         """Return a copy of suites without ciphers incompatible with version"""
-        pass
+        return [s for s in suites if CipherSuite._getMinVersion(s) <= maxVersion
+                and CipherSuite._getMaxVersion(s) >= minVersion]
 
     @staticmethod
     def filter_for_certificate(suites, cert_chain):
         """Return a copy of suites without ciphers incompatible with the cert.
         """
-        pass
+        if not cert_chain:
+            return suites
+        key_type = cert_chain.getKeyType()
+        return [s for s in suites if CipherSuite._getKeyType(s) == key_type]
 
     @staticmethod
     def filter_for_prfs(suites, prfs):
         """Return a copy of suites without ciphers incompatible with the
         specified prfs (sha256 or sha384)"""
-        pass
+        return [s for s in suites if CipherSuite._getPRFHash(s) in prfs]
 
     @classmethod
     def getTLS13Suites(cls, settings, version=None):
         """Return cipher suites that are TLS 1.3 specific."""
-        pass
+        suites = cls.tls13Suites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     srpSuites = []
     srpSuites.append(TLS_SRP_SHA_WITH_AES_256_CBC_SHA)
     srpSuites.append(TLS_SRP_SHA_WITH_AES_128_CBC_SHA)
@@ -968,7 +1025,10 @@ class CipherSuite:
     @classmethod
     def getSrpSuites(cls, settings, version=None):
         """Return SRP cipher suites matching settings"""
-        pass
+        suites = cls.srpSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     srpCertSuites = []
     srpCertSuites.append(TLS_SRP_SHA_RSA_WITH_AES_256_CBC_SHA)
     srpCertSuites.append(TLS_SRP_SHA_RSA_WITH_AES_128_CBC_SHA)
@@ -977,7 +1037,10 @@ class CipherSuite:
     @classmethod
     def getSrpCertSuites(cls, settings, version=None):
         """Return SRP cipher suites that use server certificates"""
-        pass
+        suites = cls.srpCertSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     srpDsaSuites = []
     srpDsaSuites.append(TLS_SRP_SHA_DSS_WITH_3DES_EDE_CBC_SHA)
     srpDsaSuites.append(TLS_SRP_SHA_DSS_WITH_AES_128_CBC_SHA)
@@ -986,13 +1049,19 @@ class CipherSuite:
     @classmethod
     def getSrpDsaSuites(cls, settings, version=None):
         """Return SRP DSA cipher suites that use server certificates"""
-        pass
+        suites = cls.srpDsaSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     srpAllSuites = srpSuites + srpCertSuites
 
     @classmethod
     def getSrpAllSuites(cls, settings, version=None):
         """Return all SRP cipher suites matching settings"""
-        pass
+        suites = cls.srpAllSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     certSuites = []
     certSuites.append(TLS_RSA_WITH_AES_256_GCM_SHA384)
     certSuites.append(TLS_RSA_WITH_AES_128_GCM_SHA256)
@@ -1014,7 +1083,10 @@ class CipherSuite:
     @classmethod
     def getCertSuites(cls, settings, version=None):
         """Return ciphers with RSA authentication matching settings"""
-        pass
+        suites = cls.certSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     dheCertSuites = []
     dheCertSuites.append(TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256)
     dheCertSuites.append(TLS_DHE_RSA_WITH_CHACHA20_POLY1305_draft_00)
@@ -1033,7 +1105,10 @@ class CipherSuite:
     @classmethod
     def getDheCertSuites(cls, settings, version=None):
         """Provide authenticated DHE ciphersuites matching settings"""
-        pass
+        suites = cls.dheCertSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     ecdheCertSuites = []
     ecdheCertSuites.append(TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256)
     ecdheCertSuites.append(TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_draft_00)
@@ -1050,7 +1125,10 @@ class CipherSuite:
     @classmethod
     def getEcdheCertSuites(cls, settings, version=None):
         """Provide authenticated ECDHE ciphersuites matching settings"""
-        pass
+        suites = cls.ecdheCertSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     certAllSuites = srpCertSuites + certSuites + dheCertSuites + ecdheCertSuites
     ecdheEcdsaSuites = []
     ecdheEcdsaSuites.append(TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256)
@@ -1072,7 +1150,10 @@ class CipherSuite:
     @classmethod
     def getEcdsaSuites(cls, settings, version=None):
         """Provide ECDSA authenticated ciphersuites matching settings"""
-        pass
+        suites = cls.ecdheEcdsaSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     dheDsaSuites = []
     dheDsaSuites.append(TLS_DHE_DSS_WITH_AES_256_GCM_SHA384)
     dheDsaSuites.append(TLS_DHE_DSS_WITH_AES_128_GCM_SHA256)
@@ -1085,7 +1166,10 @@ class CipherSuite:
     @classmethod
     def getDheDsaSuites(cls, settings, version=None):
         """Provide DSA authenticated ciphersuites matching settings"""
-        pass
+        suites = cls.dheDsaSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     anonSuites = []
     anonSuites.append(TLS_DH_ANON_WITH_AES_256_GCM_SHA384)
     anonSuites.append(TLS_DH_ANON_WITH_AES_128_GCM_SHA256)
@@ -1099,7 +1183,10 @@ class CipherSuite:
     @classmethod
     def getAnonSuites(cls, settings, version=None):
         """Provide anonymous DH ciphersuites matching settings"""
-        pass
+        suites = cls.anonSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     dhAllSuites = dheCertSuites + anonSuites + dheDsaSuites
     ecdhAnonSuites = []
     ecdhAnonSuites.append(TLS_ECDH_ANON_WITH_AES_256_CBC_SHA)
@@ -1111,18 +1198,35 @@ class CipherSuite:
     @classmethod
     def getEcdhAnonSuites(cls, settings, version=None):
         """Provide anonymous ECDH ciphersuites matching settings"""
-        pass
+        suites = cls.ecdhAnonSuites
+        if settings.cipherNames:
+            suites = [s for s in suites if cls._getCipherName(s) in settings.cipherNames]
+        return cls.filterForVersion(suites, settings.minVersion, settings.maxVersion)
     ecdhAllSuites = ecdheEcdsaSuites + ecdheCertSuites + ecdhAnonSuites
 
     @staticmethod
     def canonicalCipherName(ciphersuite):
         """Return the canonical name of the cipher whose number is provided."""
-        pass
+        if ciphersuite in CipherSuite.ietfNames:
+            return CipherSuite.ietfNames[ciphersuite]
+        else:
+            return None
 
     @staticmethod
     def canonicalMacName(ciphersuite):
         """Return the canonical name of the MAC whose number is provided."""
-        pass
+        name = CipherSuite.canonicalCipherName(ciphersuite)
+        if name:
+            if "MD5" in name:
+                return "MD5"
+            elif "SHA" in name:
+                if "SHA384" in name:
+                    return "SHA384"
+                elif "SHA256" in name:
+                    return "SHA256"
+                else:
+                    return "SHA"
+        return None
 
 class Fault:
     badUsername = 101
