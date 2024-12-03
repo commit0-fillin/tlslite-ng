@@ -52,7 +52,15 @@ class RecordSocket(object):
         :param data: data to send
         :raises socket.error: when write to socket failed
         """
-        pass
+        while data:
+            try:
+                sent = self.sock.send(data)
+                data = data[sent:]
+            except socket.error as e:
+                if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    yield 0
+                else:
+                    raise
 
     def send(self, msg, padding=0):
         """
@@ -64,7 +72,19 @@ class RecordSocket(object):
         :param padding: amount of padding to specify for SSLv2
         :raises socket.error: when write to socket failed
         """
-        pass
+        if self.version == (2, 0):
+            # SSLv2 encoding
+            header = RecordHeader2()
+            header.create(len(msg), padding)
+            data = header.write() + msg
+        else:
+            # SSLv3 and TLS encoding
+            header = RecordHeader3()
+            header.create(self.version, msg.contentType, len(msg))
+            data = header.write() + msg.write()
+
+        for result in self._sockSendAll(data):
+            yield result
 
     def _sockRecvAll(self, length):
         """
@@ -75,11 +95,43 @@ class RecordSocket(object):
             blocking and would block and bytearray in case the read finished
         :raises TLSAbruptCloseError: when the socket closed
         """
-        pass
+        buf = bytearray(0)
+        while len(buf) < length:
+            try:
+                chunk = self.sock.recv(length - len(buf))
+                if not chunk:
+                    raise TLSAbruptCloseError()
+                buf += chunk
+            except socket.error as e:
+                if e.errno in (errno.EWOULDBLOCK, errno.EAGAIN):
+                    yield 1
+                else:
+                    raise
+
+        yield buf
 
     def _recvHeader(self):
         """Read a single record header from socket"""
-        pass
+        if self.version == (2, 0):
+            # SSLv2
+            header = RecordHeader2()
+            for result in self._sockRecvAll(2):
+                if result in (0, 1):
+                    yield result
+                else:
+                    parser = Parser(result)
+                    header.parse(parser)
+        else:
+            # SSLv3 and TLS
+            header = RecordHeader3()
+            for result in self._sockRecvAll(5):
+                if result in (0, 1):
+                    yield result
+                else:
+                    parser = Parser(result)
+                    header.parse(parser)
+
+        yield header
 
     def recv(self):
         """
@@ -97,7 +149,33 @@ class RecordSocket(object):
         :raises TLSIllegalParameterException: When the record header was
             malformed
         """
-        pass
+        for header in self._recvHeader():
+            if header in (0, 1):
+                yield header
+            break
+
+        if isinstance(header, RecordHeader2):
+            # SSLv2
+            if header.length > self.recv_record_limit:
+                raise TLSRecordOverflow()
+
+            for result in self._sockRecvAll(header.length):
+                if result in (0, 1):
+                    yield result
+                else:
+                    yield (header, result)
+        elif isinstance(header, RecordHeader3):
+            # SSLv3 and TLS
+            if header.length > self.recv_record_limit:
+                raise TLSRecordOverflow()
+
+            for result in self._sockRecvAll(header.length):
+                if result in (0, 1):
+                    yield result
+                else:
+                    yield (header, result)
+        else:
+            raise TLSIllegalParameterException("Received invalid record header")
 
 class ConnectionState(object):
     """Preserve the connection state for reading and writing data to records"""
