@@ -58,4 +58,39 @@ class SMTP_TLS(SMTP):
             the ciphersuites, certificate types, and SSL/TLS versions
             offered by the client.
         """
-        pass
+        # First, send the STARTTLS command to the SMTP server
+        (code, resp) = self.docmd("STARTTLS")
+        if code != 220:
+            raise SMTPException("SMTP STARTTLS extension not supported by server.")
+
+        # Set up the TLS connection
+        tlsConnection = TLSConnection(self.sock)
+        
+        # Create a ClientHelper instance
+        helper = ClientHelper(username, password, certChain, privateKey, checker, settings)
+        
+        # Perform the TLS handshake
+        try:
+            if certChain and privateKey:
+                tlsConnection.handshakeClientCert(certChain, privateKey, session=None, settings=settings, checker=checker)
+            elif username and password:
+                tlsConnection.handshakeClientSRP(username, password, session=None, settings=settings, checker=checker)
+            else:
+                tlsConnection.handshakeClientAnonymous(session=None, settings=settings, checker=checker)
+        except TLSError as e:
+            raise SMTPException("TLS handshake failed: %s" % str(e))
+
+        # Replace the socket with the TLS connection
+        self.sock = tlsConnection
+        self.file = None
+        
+        # Reset the SMTP connection to be over TLS
+        self.helo_resp = None
+        self.ehlo_resp = None
+        self.esmtp_features = {}
+        self.does_esmtp = 0
+        
+        # Perform EHLO again over TLS
+        self.ehlo_or_helo_if_needed()
+
+        return (code, resp)
